@@ -1,0 +1,46 @@
+= cross-make-linux
+:icons: font
+:source-highlighter: rouge
+
+`cross-make-linux` is a shim to directly compile the linux kernel on macOS
+without using a virtual machine or docker image.
+
+* It ensures the required set of gnu binaries (e.g. `find`, `gmake`, `gsed`,
+  etc.) are used by kbuild.
+
+* It prepend values to `HOSTCFLAGS` and related variables when invoking make so
+  that the HOST helper executables can build and run (scripts/*).
+
+Roger Standridge <archie2x@users.noreply.github.com>
+
+== Install
+
+Via homebrew (recommended):
+[source,bash]
+----
+brew install archie2x/cross/cross-make-linux
+----
+
+Git clone:
+[source, bash]
+----
+git clone git@github.com:archie2x/cross-make-linux
+PATH="$PWD/cross-make-linux/bin:$PATH"
+----
+
+== Example
+
+[source,bash]
+----
+linux > cross-make-linux LLVM=1 ARCH=arm64 O=build bcm2712_defconfig
+linux > cross-make-linux LLVM=1 ARCH=arm64 O=build Image.gz modules dtbs
+linux > cross-make-linux LLVM=1 ARCH=arm64 O=build INSTALL_MOD_PATH=dist modules_install
+----
+
+== Caveat
+
+The linux sources should be checked out and built on a case-sensitive filesystem.
+
+== License
+
+SPDX-License-Identifier: MIT
