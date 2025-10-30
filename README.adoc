@@ -11,7 +11,6 @@ without using a virtual machine or docker image.
 * It prepend values to `HOSTCFLAGS` and related variables when invoking make so
   that the HOST helper executables can build and run (scripts/*).
 
-Roger Standridge <archie2x@users.noreply.github.com>
 
 == Install
 
@@ -37,17 +36,16 @@ You will also need a working cross compiler setup. For example:
 brew install llvm lld
 ----
 
-Assuming the cross-compilers are setup, and assuming here llvm/clang, here's an
+Assuming the cross-compilers are setup (here llvm/clang), here's an
 example of building the Raspberry Pi 5 kernel, device tree, and modules.
 
-[source,bash]
 ----
-linux > cross-make-linux LLVM=1 ARCH=arm64 O=build bcm2712_defconfig
-linux > cross-make-linux LLVM=1 ARCH=arm64 O=build Image.gz modules dtbs
-linux > cross-make-linux LLVM=1 ARCH=arm64 O=build INSTALL_MOD_PATH=dist modules_install
+linux > cross-make-linux LLVM=1 ARCH=arm64 O=build -j$(nproc) bcm2712_defconfig
+linux > cross-make-linux LLVM=1 ARCH=arm64 O=build -j$(nproc) Image.gz modules dtbs
+linux > cross-make-linux LLVM=1 ARCH=arm64 O=build -j$(nproc) INSTALL_MOD_PATH=dist modules_install
 ----
 
-== Caveat
+== Caveats
 
 Linux kernel builds require a case-sensitive filesystem.
 
