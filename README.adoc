@@ -32,9 +32,10 @@ Assuming the cross-compilers are setup (here llvm/clang), here's an
 example of building the Raspberry Pi 5 kernel, device tree, and modules.
 
 ----
-linux > cross-make-linux LLVM=1 ARCH=arm64 O=build -j$(nproc) bcm2712_defconfig
-linux > cross-make-linux LLVM=1 ARCH=arm64 O=build -j$(nproc) Image.gz modules dtbs
-linux > cross-make-linux LLVM=1 ARCH=arm64 O=build -j$(nproc) INSTALL_MOD_PATH=dist modules_install
+export ARCH=arm64 LLVM=1
+linux > cross-make-linux O=build -j$(nproc) bcm2712_defconfig
+linux > cross-make-linux O=build -j$(nproc) Image.gz modules dtbs
+linux > cross-make-linux O=build -j$(nproc) INSTALL_MOD_PATH=dist modules_install
 ----
 
 == Caveats
