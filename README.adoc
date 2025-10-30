@@ -53,18 +53,20 @@ Linux kernel builds require a case-sensitive filesystem.
 
 A helper script is bundled to create a APFS case-sensitive volume:
 
-   `$(brew --prefix cross-make-linux)/libexec/bin/create-case-sensitive.sh`
+[source,bash]
+----
+$(brew --prefix cross-make-linux)/libexec/bin/create-case-sensitive.sh
+----
 
 You’ll likely only need to run it once.
 
 Example:
-[source,bash]
 ----
-bash #{opt_libexec}/bin/create-case-sensitive.sh NAME MOUNT
-cd MOUNT
-git clone --depth=1 -b rpi-6.12.y https://github.com/raspberrypi/linux
-cd linux
-cross-make-linux ...
+> bash $(brew --prefix cross-make-linux)//bin/create-case-sensitive.sh NAME MOUNT
+> cd MOUNT
+> git clone --depth=1 -b rpi-6.12.y https://github.com/raspberrypi/linux
+> cd linux
+> cross-make-linux ...
 ----
 
 == Acknowledgements
