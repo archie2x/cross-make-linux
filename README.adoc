@@ -30,6 +30,16 @@ PATH="$PWD/cross-make-linux/bin:$PATH"
 
 == Example
 
+You will also need a working cross compiler setup. For example:
+
+[source,bash]
+----
+brew install llvm lld
+----
+
+Assuming the cross-compilers are setup, and assuming here llvm/clang, here's an
+example of building the Raspberry Pi 5 kernel, device tree, and modules.
+
 [source,bash]
 ----
 linux > cross-make-linux LLVM=1 ARCH=arm64 O=build bcm2712_defconfig
@@ -39,7 +49,28 @@ linux > cross-make-linux LLVM=1 ARCH=arm64 O=build INSTALL_MOD_PATH=dist modules
 
 == Caveat
 
-The linux sources should be checked out and built on a case-sensitive filesystem.
+Linux kernel builds require a case-sensitive filesystem.
+
+A helper script is bundled to create a APFS case-sensitive volume:
+
+   `$(brew --prefix cross-make-linux)/libexec/bin/create-case-sensitive.sh`
+
+You’ll likely only need to run it once.
+
+Example:
+[source,bash]
+----
+bash #{opt_libexec}/bin/create-case-sensitive.sh NAME MOUNT
+cd MOUNT
+git clone --depth=1 -b rpi-6.12.y https://github.com/raspberrypi/linux
+cd linux
+cross-make-linux ...
+----
+
+== Acknowledgements
+
+https://seiya.me/blog/building-linux-on-macos-natively
+https://stackoverflow.com/questions/10018764/building-linux-kernel-on-mac-os-x/61707998#61707998
 
 == License
 
