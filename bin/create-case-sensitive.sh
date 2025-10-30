@@ -2,12 +2,12 @@
 set -euo pipefail
 
 # --- defaults --------------------------------------------------------------
-VOL_NAME_DEFAULT=sensitive
-MOUNTPOINT_DEFAULT=/Volumes/sensitive
+VOL_NAME_DEFAULT=case-sensitive
+MOUNTPOINT_DEFAULT=/Volumes/case-sensitive
 
 usage() {
   cat <<EOF
-Usage: case-sensitive.sh [options] [VOLUME_NAME] [MOUNTPOINT]
+Usage: create-case-sensitive.sh [options] [VOLUME_NAME] [MOUNTPOINT]
 
 Create or reuse a case-sensitive APFS volume and mount it.
 

@@ -47,30 +47,38 @@ linux > cross-make-linux LLVM=1 ARCH=arm64 O=build -j$(nproc) INSTALL_MOD_PATH=d
 
 == Caveats
 
-Linux kernel builds require a case-sensitive filesystem.
-
-A helper script is bundled to create a APFS case-sensitive volume:
+Linux kernel builds require a case-sensitive filesystem. and a helper script is
+bundled to create a APFS case-sensitive volume:
 
 [source,bash]
 ----
-$(brew --prefix cross-make-linux)/libexec/bin/create-case-sensitive.sh
+sudo $(brew --prefix cross-make-linux)/libexec/bin/create-case-sensitive.sh
 ----
 
-You’ll likely only need to run it once.
+You’ll likely only need to run it once. It creates an APFS case-sensitive volume
+named 'case-sensitive' and mounts it at '/Volumes/case-sensitive'.
+
+For my personal workflow (recommended), I mount it at '~/src' and do all my
+development work / git checkouts in that directory.
 
 Example:
 ----
-> bash $(brew --prefix cross-make-linux)//bin/create-case-sensitive.sh NAME MOUNT
+> sudo $(brew --prefix cross-make-linux)//bin/create-case-sensitive.sh NAME MOUNT
 > cd MOUNT
 > git clone --depth=1 -b rpi-6.12.y https://github.com/raspberrypi/linux
 > cd linux
 > cross-make-linux ...
 ----
 
+This can also be done manually via the 'disk-utility' application though I'm
+only aware of CLI tools to mount it at a custom location.
+
 == Acknowledgements
 
-https://seiya.me/blog/building-linux-on-macos-natively
-https://stackoverflow.com/questions/10018764/building-linux-kernel-on-mac-os-x/61707998#61707998
+The following resources were helpful in figuring out the details.
+
+* https://seiya.me/blog/building-linux-on-macos-natively
+* https://stackoverflow.com/questions/10018764/building-linux-kernel-on-mac-os-x/61707998#61707998
 
 == License
 
