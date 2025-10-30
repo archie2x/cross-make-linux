@@ -14,18 +14,9 @@ virtual machine or docker image is required.
 
 == Install
 
-Via homebrew (recommended):
 [source,bash]
 ----
 brew install archie2x/cross/cross-make-linux
-----
-
-Git clone:
-[source, bash]
-----
-brew install coreutils findutils gnu-sed make pkg-config
-git clone git@github.com:archie2x/cross-make-linux
-PATH="$PWD/cross-make-linux/bin:$PATH"
 ----
 
 == Example
@@ -57,9 +48,9 @@ sudo $(brew --prefix cross-make-linux)/libexec/bin/create-case-sensitive.sh
 ----
 
 You’ll likely only need to run it once. It creates an APFS case-sensitive volume
-named 'case-sensitive' and mounts it at '/Volumes/case-sensitive'.
+named `case-sensitive` and mounts it at `/Volumes/case-sensitive`.
 
-For my personal workflow (recommended), I mount it at '~/src' and do all my
+For my personal workflow (recommended 😎), I mount it at `~/src` and do all my
 development work / git checkouts in that directory.
 
 Example:
@@ -71,7 +62,7 @@ Example:
 > cross-make-linux ...
 ----
 
-This can also be done manually via the 'disk-utility' application though I'm
+This can also be done manually via the `disk-utility` application though I'm
 only aware of CLI tools to mount it at a custom location.
 
 == Acknowledgements
