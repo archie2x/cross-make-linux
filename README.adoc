@@ -40,31 +40,30 @@ linux > cross-make-linux O=build -j$(nproc) INSTALL_MOD_PATH=dist modules_instal
 
 == Caveats
 
-Linux kernel builds require a case-sensitive filesystem. and a helper script is
-bundled to create a APFS case-sensitive volume:
+Linux kernel builds require a case-sensitive filesystem. You can create one with
+the `disk-utility` application. I'm only aware, however, of CLI tools to mount
+it at a custom location.
+
+A helper script is bundled to create and mount an APFS case-sensitive volume at
+a custom location. You’ll likely only need to run it once. By default the volume
+will be named `case-sensitive` and mounted at `/Volumes/case-sensitive`. The
+name and mount location can be overridden by arguments to the script.
 
 [source,bash]
 ----
 sudo $(brew --prefix cross-make-linux)/libexec/bin/create-case-sensitive.sh
 ----
 
-You’ll likely only need to run it once. It creates an APFS case-sensitive volume
-named `case-sensitive` and mounts it at `/Volumes/case-sensitive`.
-
 For my personal workflow (recommended 😎), I mount it at `~/src` and do all my
 development work / git checkouts in that directory.
 
 Example:
 ----
-> sudo $(brew --prefix cross-make-linux)//bin/create-case-sensitive.sh NAME MOUNT
-> cd MOUNT
-> git clone --depth=1 -b rpi-6.12.y https://github.com/raspberrypi/linux
-> cd linux
+> sudo $(brew --prefix cross-make-linux)/bin/create-case-sensitive.sh case-sensitive ~/src
+> git clone --depth=1 -b rpi-6.12.y https://github.com/raspberrypi/linux ~/src/linux
+> cd ~/src/linux
 > cross-make-linux ...
 ----
-
-This can also be done manually via the `disk-utility` application though I'm
-only aware of CLI tools to mount it at a custom location.
 
 == Acknowledgements
 
