@@ -3,203 +3,61 @@
 #
 # macOS linux kernel host-tools build compatibility
 #  - add compatibility flags to gnu-make invocation
-#  - ensure make/sed/find etc are linux kernel build compatible
+#  - ensure make/sed/find etc are linux kbuild compatible
 #
-# In the end it is "just" invoking
+# It invokes:
 #
 #   PATH=[gnu-tools] (gnu)make HOSTCFLAGS="..." HOSTCFLAGS_file2alias.o="..." "$@"
 #
 # The complexity is brew compatibility, error checking, and debugging.
 #
-# Set CROSS_MAKE_LINUX_VERBOSE to non-falsey (faLSe|nO|oFf|0) for debug
+# Set CML_VERBOSE to non-falsey (faLSe|nO|oFf|0) for debug
 #
 
 set -euo pipefail
 
-# Resolve script directory
-SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-${(%):-%N}}")" && pwd)"
-
-# ------------------------------------------------------------
-# compare $1 to falsey values
-# ------------------------------------------------------------
-_is_falsey() {
-    case "${1:-}" in
-        [Ff][Aa][Ll][Ss][Ee]|[Nn][Oo]|[Oo][Ff][Ff]|0|'') return 0 ;;  # falsey
-        *) return 1 ;;  # everything else is "not falsey"
-    esac
-}
-
-# ------------------------------------------------------------
-# memoize verbosity on startup
-# ------------------------------------------------------------
-if _is_falsey "${CROSS_MAKE_LINUX_VERBOSE:-}"; then
-    _CROSS_MAKE_LINUX_VERBOSE=     # empty = false
+# Resolve
+SELF_DIR=$(dirname "$(realpath "$0")")
+BREW_PREFIX=$(brew --prefix 2>/dev/null || true)
+if [ -n "$BREW_PREFIX" ] &&
+       [ "${SELF_DIR#${BREW_PREFIX}}" != "$SELF_DIR" ]; then
+    LIBEXEC_DIR="$(brew --prefix cross-make-linux)/libexec"
 else
-    _CROSS_MAKE_LINUX_VERBOSE=1    # non-empty = true
+    LIBEXEC_DIR="$SELF_DIR/../libexec"
 fi
-unset CROSS_MAKE_LINUX_VERBOSE  # optional: avoid re-eval later
 
-# ------------------------------------------------------------
-# _debug <message>
-# Prints a message to stderr only if verbose mode is enabled.
-# ------------------------------------------------------------
-_debug() {
-    if [ -n "${_CROSS_MAKE_LINUX_VERBOSE:-}" ]; then
-        printf '[CML_DBG] %b\n' "$*" >&2
-    fi
-}
-
-# ------------------------------------------------------------
-# _debug_path
-# Prints each element of PATH on own line
-# ------------------------------------------------------------
-_debug_path() {
-    _debug "PATH:"
-    # Split PATH on ':' and iterate
-    local IFS=':'
-    for element in $PATH; do
-        _debug "  $element"
-    done
-}
-
-# -----------------------------------------------------------------------------
-# Resolve the compatibility include directory
-# Priority:
-#   1) Homebrew keg-adjacent:
-#      <script>/../libexec/include/cross-make-linux
-#   2) Source tree adjacent:
-#      <script>/../include/cross-make-linux
-#   3) Homebrew prefix lookup:
-#      $(brew --prefix cross-make-linux)/libexec/include/cross-make-linux
-# Returns empty string if none found.
-# -----------------------------------------------------------------------------
-_compat_include() {
-  # Resolve the directory containing this script without relying on realpath
-
-  # 1) Homebrew keg layout (script likely in ../bin, includes in ../libexec/include)
-  local inc="$SELF_DIR/../libexec/include/cross-make-linux"
-  if [ -d "$inc" ]; then
-    printf '%s\n' "$inc"
-    return
-  fi
-
-  # 2) Standalone source checkout layout
-  inc="$SELF_DIR/../include/cross-make-linux"
-  if [ -d "$inc" ]; then
-    printf '%s\n' "$inc"
-    return
-  fi
-
-  # 3) Brew prefix lookup (only if brew exists)
-  if command -v brew >/dev/null 2>&1; then
-    local bp
-    bp="$(brew --prefix cross-make-linux 2>/dev/null || true)"
-    inc="$bp/libexec/include/cross-make-linux"
-    if [ -n "$bp" ] && [ -d "$inc" ]; then
-      printf '%s\n' "$inc"
-      return
-    fi
-  fi
-
-  # None found
-  printf '%s\n' ""
-}
-
-# -----------------------------------------------------------------------------
-# _ensure_gnu_tool <name> <expected_binary> <brew_pkg>
-#
-# Ensures given GNU tool (e.g. make, sed, find) is available in PATH.
-# If currently resolved binary:
-#   - does not exist, OR
-#   - does not resolve (via realpath) to <expected_binary>,
-# then the corresponding Homebrew gnubin directory for <brew_pkg> is prepended.
-#
-# Example:
-#   ensure_gnu_tool make gmake make
-#   ensure_gnu_tool sed  gsed  gnu-sed
-#
-# Notes:
-#   - modifies PATH only if needed.
-#   - pass specific tools on make command e.g.
-#       cross-make-linux SED=/my/custom/sed
-# -----------------------------------------------------------------------------
-_ensure_gnu_tool() {
-  local name="$1" want="$2" pkg="$3"
-  local brewpath current
-
-  brewpath="$(brew --prefix "$pkg" 2>/dev/null)" || return 0
-  current="$(command -v "$name" 2>/dev/null || true)"
-
-  if [ -z "$current" ] || [ "$(basename "$(realpath "$current")")" != "$want" ]; then
-    PATH="${brewpath}/libexec/gnubin:$PATH"
-  fi
-}
-
-# -----------------------------------------------------------------------------
-# Prepend DEFAULT_VALUE to make VAR_NAME= value honoring any existing value set
-# E.g.
-# cross-make-linux HOSTCFLAGS="-DFOO=BAR"
-# _merge_flags HOSTCFLAGS "-I/path"
-# -> make HOSTCFLAGS="-I/path -DFOO=BAR"
-#
-# Invokes make itself to determine value as seen from make.
-#
-# XXX Does not attempt to read command line itself so may promote env variable
-# to command line variable:
-# HOSTCFLAGS="-DFOO=BAR" cross-make-linux ...
-#     will likely become
-# cross-make-linux HOSTCFLAGS="-I/path -DFOO=BAR"
-#
-# -----------------------------------------------------------------------------
-_merge_flags() {
-    # Usage: _merge_flags VAR_NAME DEFAULT_VALUE [make args...]
-    local var="$1"
-    local default="$2"
-    shift 2
-
-    # query make for the var's existing resolved value
-    local existing
-    existing="$(
-    printf '%s\n' "print:" "	@echo \$(${var})" "%:" "	@true" |
-    make -s -f - -k "$@" print 2>/dev/null || true
-  )"
-
-    # Merge default with existing
-    if [[ -n "$existing" ]]; then
-        echo "$default $existing"
-    else
-        echo "$default"
-    fi
-}
+# Load / initialize
+. "${LIBEXEC_DIR}/lib/common.sh"
+cml_init "${SELF_DIR}"
 
 # --- Main setup ---
 
-_ensure_gnu_tool make gmake make
-_ensure_gnu_tool sed gsed gnu-sed
-_ensure_gnu_tool find gfind findutils
-_ensure_gnu_tool date gdate coreutils
+cml_ensure_gnu_tool make gmake make
+cml_ensure_gnu_tool sed gsed gnu-sed
+cml_ensure_gnu_tool find gfind findutils
+cml_ensure_gnu_tool date gdate coreutils
 
 COMPAT_INCLUDE="${COMPAT_INCLUDE:-$(_compat_include)}"
 export COMPAT_INCLUDE
-if [[ ! -d "$COMPAT_INCLUDE" ]]; then
+if [ ! -d "$COMPAT_INCLUDE" ]; then
   echo "warning: compat include dir not found at '$COMPAT_INCLUDE'" >&2
 fi
 COMPAT_HOSTCFLAGS="-I${COMPAT_INCLUDE}"
-COMPAT_FILE2ALIAS="-include ${COMPAT_INCLUDE}/uuid_wrap.h"
+COMPAT_F2A="-include ${COMPAT_INCLUDE}/uuid_wrap.h"
 
-M_HOSTCFLAGS="$(_merge_flags HOSTCFLAGS "$COMPAT_HOSTCFLAGS" "$@")"
-M_FILE2ALIAS="$(_merge_flags HOSTCFLAGS_file2alias.o "$COMPAT_FILE2ALIAS" "$@")"
+M_HOSTCFLAGS="$(cml_merge_make_flags HOSTCFLAGS "$COMPAT_HOSTCFLAGS" "$@")"
+M_F2A="$(cml_merge_make_flags HOSTCFLAGS_file2alias.o "$COMPAT_F2A" "$@")"
 
-_debug "HOSTCFLAGS=${M_HOSTCFLAGS}"
-_debug "HOSTCFLAGS_file2alias.o=${M_FILE2ALIAS}"
-_debug "make:$(command -v make)"
-_debug "sed:$(command -v sed)"
-_debug "find:$(command -v find)"
-_debug "date:$(command -v date)"
-_debug_path
+cml_debug "HOSTCFLAGS=${M_HOSTCFLAGS}"
+cml_debug "HOSTCFLAGS_file2alias.o=${M_F2A}"
+cml_debug "make:$(command -v make)"
+cml_debug "sed:$(command -v sed)"
+cml_debug "find:$(command -v find)"
+cml_debug "date:$(command -v date)"
+cml_debug_PATH
 
 # Execute make with composed flags
 exec make \
   HOSTCFLAGS="$M_HOSTCFLAGS" \
-  HOSTCFLAGS_file2alias.o="$M_FILE2ALIAS" \
+  HOSTCFLAGS_file2alias.o="$M_F2A" \
   "$@"

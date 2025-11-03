@@ -1,0 +1,288 @@
+#!/usr/bin/env bash
+# Build Raspberry Pi 5 kernel Debian packages without debhelper.
+
+set -euo pipefail
+
+SELF_DIR=$(dirname "$(realpath "$0")")
+BREW_PREFIX=$(brew --prefix 2>/dev/null || true)
+if [ -n "$BREW_PREFIX" ] &&
+       [ "${SELF_DIR#${BREW_PREFIX}}" != "$SELF_DIR" ]; then
+    LIBEXEC_DIR="$(brew --prefix cross-make-linux)/libexec"
+else
+    LIBEXEC_DIR="$SELF_DIR/../libexec"
+fi
+
+# Load shared helpers
+. "${LIBEXEC_DIR}/lib/common.sh"
+cml_init "${SELF_DIR}"
+
+usage() {
+	cat <<'EOF'
+Usage: build-pi5-deb.sh [options]
+
+Options:
+  --tree PATH          Kernel source or build tree (default: current directory)
+  --srctree PATH       Kernel source tree (auto-detected for O= builds)
+  --out PATH           Output directory for .deb files (default: <tree>/out/deb)
+  --config PATH        Optional env file to source before running
+  --kernelrelease STR  Override kernel release (default: make -s kernelrelease)
+  --with-headers       Also package linux-headers
+  --with-dbg           Also package linux-image debug symbols
+  --with-libc          Also package linux-libc-dev
+  -h, --help           Show this help
+
+Environment overrides:
+  KDEB_* variables as consumed by scripts/package/mkdebian
+
+The script expects GNU coreutils and GNU sed to be available.
+EOF
+}
+
+generate_control() {
+	local pkg="$1"
+	local version="$2"
+	local maint="$3"
+	local arch="$4"
+	local control_path="$5"
+	local depends="kmod, initramfs-tools | linux-initramfs-tool"
+	local section="kernel"
+	local priority="optional"
+	local description="Linux kernel, version ${KERNELRELEASE}
+ Custom Raspberry Pi 5 kernel build."
+
+	case "${pkg}" in
+		linux-image-*-dbg)
+			section="debug"
+			depends="${pkg%-dbg} (= ${version})"
+			description="Debug symbols for ${pkg%-dbg}."
+			;;
+		linux-headers-*)
+			section="devel"
+			depends="make, libc6-dev"
+			description="Header files for building external modules."
+			;;
+		linux-libc-dev)
+			section="devel"
+			depends="libc6-dev"
+			description="Userspace headers from this custom kernel."
+			;;
+	esac
+
+	cat >"${control_path}" <<EOF
+Package: ${pkg}
+Version: ${version}
+Section: ${section}
+Priority: ${priority}
+Architecture: ${arch}
+Maintainer: ${maint}
+Depends: ${depends}
+Description: ${description}
+EOF
+}
+
+main() {
+	local tree srctree out_dir config_file kernelrelease=""
+	local with_headers=0 with_dbg=0 with_libc=0
+	local make_cmd
+
+	tree=$(pwd)
+	srctree=""
+	out_dir=""
+	config_file=""
+
+	while [ $# -gt 0 ]; do
+		case "$1" in
+			--tree)
+				[ $# -ge 2 ] || cml_die "--tree requires a path"
+				tree="$2"
+				shift 2
+				;;
+			--srctree)
+				[ $# -ge 2 ] || cml_die "--srctree requires a path"
+				srctree="$2"
+				shift 2
+				;;
+			--out)
+				[ $# -ge 2 ] || cml_die "--out requires a path"
+				out_dir="$2"
+				shift 2
+				;;
+			--config)
+				[ $# -ge 2 ] || cml_die "--config requires a path"
+				config_file="$2"
+				shift 2
+				;;
+			--kernelrelease)
+				[ $# -ge 2 ] || cml_die "--kernelrelease requires a value"
+				kernelrelease="$2"
+				shift 2
+				;;
+			--with-headers)
+				with_headers=1
+				shift
+				;;
+			--with-dbg)
+				with_dbg=1
+				shift
+				;;
+			--with-libc)
+				with_libc=1
+				shift
+				;;
+			-h|--help)
+				usage
+				exit 0
+				;;
+			*)
+				cml_die "unknown option: $1"
+				;;
+		esac
+	done
+
+	tree=$(realpath "${tree}")
+	[ -d "${tree}" ] || cml_die "kernel tree not found: ${tree}"
+
+	cd "${tree}"
+
+	[ -f Makefile ] || cml_die "Makefile not found in ${tree}"
+
+	if [ -z "${config_file}" ]; then
+		config_file="${HOME}/.config/pi5-deb.env"
+	fi
+
+	if [ -f "${config_file}" ]; then
+		cml_log "sourcing config ${config_file}"
+		# shellcheck disable=SC1090
+		. "${config_file}"
+	fi
+
+	if [ -z "${srctree}" ]; then
+        # Invokes (g)make with '-f - -f Makefile' overriding all (%)
+        srctree=$(
+            printf '%b\n' \
+                   ".PHONY: print" \
+                   "print:" "\t@echo \$(abs_srctree)" \
+                   "%:" "\t@:" |
+                make -f - -f Makefile
+               )
+	fi
+	srctree=$(realpath "${srctree}")
+
+	if [ ! -x "${srctree}/scripts/package/mkdebian" ]; then
+		cml_die "scripts/package/mkdebian not found under ${srctree}; pass --srctree"
+	fi
+
+	if [ ! -f .config ]; then
+		cml_die ".config missing; configure the kernel first"
+	fi
+
+	make_cmd=${MAKE:-make}
+
+	if [ -z "${kernelrelease}" ]; then
+		kernelrelease=$("${make_cmd}" -s kernelrelease)
+	fi
+	KERNELRELEASE="${kernelrelease}"
+	export KERNELRELEASE
+
+	local kernelversion
+	kernelversion=$("${make_cmd}" -s kernelversion)
+	[ -n "${kernelversion}" ] || cml_die "failed to determine kernelversion"
+	KERNELVERSION="${kernelversion}"
+	export KERNELVERSION
+
+	local arch_env uts_machine srcarch
+	arch_env="${ARCH:-}"
+	if [ -z "${arch_env}" ]; then
+		arch_env=$(uname -m)
+	fi
+	ARCH="${arch_env}"
+	export ARCH
+
+	if [ -n "${UTS_MACHINE:-}" ]; then
+		uts_machine="${UTS_MACHINE}"
+	elif [ -n "${arch_env}" ]; then
+		uts_machine="${arch_env}"
+	else
+		uts_machine=$(uname -m)
+	fi
+	[ -n "${uts_machine}" ] || cml_die "failed to determine UTS_MACHINE; set ARCH or UTS_MACHINE"
+	UTS_MACHINE="${uts_machine}"
+	export UTS_MACHINE
+
+	srcarch="${SRCARCH:-${arch_env}}"
+	case "${arch_env}" in
+		i386|x86_64)
+			srcarch="x86"
+			;;
+		sparc32|sparc64)
+			srcarch="sparc"
+			;;
+		parisc64)
+			srcarch="parisc"
+			;;
+	esac
+	SRCARCH="${srcarch}"
+	export SRCARCH
+
+	KCONFIG_CONFIG="${tree}/.config"
+	export KCONFIG_CONFIG
+
+	cml_log "kernel release ${KERNELRELEASE}"
+
+	out_dir=${out_dir:-"${tree}/out/deb"}
+	mkdir -p "${out_dir}"
+
+	cml_log "generating debian/ metadata"
+	rm -rf debian
+	"${make_cmd}" -s -f "${srctree}/scripts/Makefile.package" \
+		srctree="${srctree}" objtree="${tree}" debian
+
+	if [ ! -f debian/arch ]; then
+		cml_die "debian/arch not generated"
+	fi
+
+	cml_log "configuring dpkg architecture"
+	# shellcheck disable=SC1090
+	eval "$(dpkg-architecture -a"$(cat debian/arch)" --print-set)"
+
+	local version maint arch
+	version=$(dpkg-parsechangelog -S Version)
+	maint=$(dpkg-parsechangelog -S Maintainer)
+	arch=$(cat debian/arch)
+
+	local packages=("linux-image-${KERNELRELEASE}")
+	[ "${with_headers}" -eq 1 ] && packages+=("linux-headers-${KERNELRELEASE}")
+	[ "${with_dbg}" -eq 1 ] && packages+=("linux-image-${KERNELRELEASE}-dbg")
+	[ "${with_libc}" -eq 1 ] && packages+=("linux-libc-dev")
+
+	local produced=()
+	local pkg pkg_dir deb_path
+	for pkg in "${packages[@]}"; do
+		cml_log "packaging ${pkg}"
+		pkg_dir="debian/${pkg}"
+		rm -rf "${pkg_dir}" "${pkg_dir}.deb"
+		DEPMOD=true "${make_cmd}" -s run-command \
+			KBUILD_RUN_COMMAND="\$(srctree)/scripts/package/builddeb ${pkg}"
+
+		mkdir -p "${pkg_dir}/DEBIAN"
+		generate_control "${pkg}" "${version}" "${maint}" "${arch}" "${pkg_dir}/DEBIAN/control"
+		cml_md5sums "${pkg_dir}"
+
+		cml_log "building ${pkg}.deb"
+		dpkg-deb --build --root-owner-group "${pkg_dir}"
+		deb_path="${pkg_dir}.deb"
+		[ -f "${deb_path}" ] || cml_die "dpkg-deb did not produce ${deb_path}"
+		mv "${deb_path}" "${out_dir}/"
+		produced+=("${out_dir}/$(basename "${deb_path}")")
+	done
+
+	cml_log "packages ready:"
+	for deb_path in "${produced[@]}"; do
+		printf '  %s\n' "${deb_path}"
+	done
+}
+
+cml_ensure_gnu_tool make gmake make
+cml_ensure_gnu_tool install ginstall coreutils
+
+main "$@"

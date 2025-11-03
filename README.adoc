@@ -21,11 +21,12 @@ brew install archie2x/cross/cross-make-linux
 
 == Example
 
-You will also need a working cross compiler setup. For example:
+You will also need a working cross compiler setup.
 
 [source,bash]
 ----
 brew install llvm lld
+PATH="$(brew prefix llvm)/bin:$PATH"
 ----
 
 Assuming the cross-compilers are setup (here llvm/clang), here's an
@@ -67,10 +68,9 @@ Example:
 
 == Acknowledgements
 
-The following resources were helpful in figuring out the details.
-
 * https://seiya.me/blog/building-linux-on-macos-natively
 * https://stackoverflow.com/questions/10018764/building-linux-kernel-on-mac-os-x/61707998#61707998
+* https://mastermakrela.com/kernel/lkp/kernel-dev-on-macos
 
 == License
 
